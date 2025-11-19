@@ -33,22 +33,23 @@ uv run python train_pytorch.py --epochs 8 --batch-size 256 --out models/pytorch_
 
 训练中部分日志（每 epoch）：
 
-- Epoch 1: loss=0.1672 train_acc=0.9507
-- Epoch 2: loss=0.0435 train_acc=0.9863
-- Epoch 3: loss=0.0326 train_acc=0.9897
-- Epoch 4: loss=0.0243 train_acc=0.9927
-- Epoch 5: loss=0.0151 train_acc=0.9951
-- Epoch 6: loss=0.0111 train_acc=0.9967
-- Epoch 7: loss=0.0091 train_acc=0.9972
-- Epoch 8: loss=0.0077 train_acc=0.9976
+```
+Epoch 1: loss=0.1672 train_acc=0.9507
+Epoch 2: loss=0.0435 train_acc=0.9863
+Epoch 3: loss=0.0326 train_acc=0.9897
+Epoch 4: loss=0.0243 train_acc=0.9927
+Epoch 5: loss=0.0151 train_acc=0.9951
+Epoch 6: loss=0.0111 train_acc=0.9967
+Epoch 7: loss=0.0091 train_acc=0.9972
+Epoch 8: loss=0.0077 train_acc=0.9976
+```
 
 可以看到训练集上损失快速下降并达到很高训练精度，表明模型高效学习到图像特征。
 
 ## 4 测试结果与指标说明
 模型在测试集（10000 张）上的主要指标如下：
 
-- 测试集总体准确率（Accuracy）: **0.9926**
-  - 解释：表示模型预测正确的样本数占总样本数的比例，越接近 1 表示整体性能越好。
+测试集总体准确率（Accuracy）: **0.9926**
 
 以下为按类别的精确率、召回率与 F1 值（classification_report）：
 
@@ -73,6 +74,7 @@ weighted avg       0.99      0.99      0.99     10000
 ```
 
 解读（主要指标）：
+- 准确率（Accuracy）：表示模型预测正确的样本数占总样本数的比例，越接近 1 表示整体性能越好。
 - 精确率（Precision）: 对模型判定为某类别的样本中，实际属于该类别的比例。精确率高表示误报少。
 - 召回率（Recall）: 在真实属于某类别的所有样本中，被模型正确识别出来的比例。召回率高表示漏检少。
 - F1 分数（F1-score）: 精确率和召回率的调和平均，综合衡量两者表现，越高越好。
@@ -119,6 +121,3 @@ uv run 1_digit/train_pytorch.py
 - 使用数据增强（旋转、平移、随机裁剪、亮度/对比度扰动）；
 - 尝试小型 ResNet 或添加更多正则化（label smoothing、weight decay）；
 - 做交叉验证或保留验证集以调参并评估模型稳定性。
-
----
-报告由代码训练得到的日志与评估结果整理而成；如需我把报告转成 PDF 或加入更多可视化（如混淆矩阵图像），我可以继续帮助生成。
