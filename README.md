@@ -17,11 +17,11 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ### 1.2 运行代码
 
-在项目根目录运行以下命令：
+在**项目根目录**运行以下命令：
 
 1. 实验一：手写数字识别
 
-    ```
+    ```powershell
     uv run 1_digit/train_pytorch.py
     ```
 
@@ -31,4 +31,4 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ## 2 报告
 
-简单为这个模型和训练效果撰写了一个报告，在对应实验文件夹内的 `reports` 目录下。
+简单为模型和训练效果撰写了一个报告，在对应实验文件夹内的 `reports` 目录下。

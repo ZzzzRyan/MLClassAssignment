@@ -1,17 +1,18 @@
 [project]
-name = "digit"
+name = "mlclassassignment"
 version = "0.1.0"
-description = "Add your description here"
+description = "BUAA Machine Learning Course Assignment Code"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.26",
     "pillow>=10.0",
     "scikit-learn>=1.4",
-    "joblib",
     "tqdm",
     "torch",
     "torchvision",
+    "matplotlib>=3.10.7",
+    "seaborn>=0.13.2",
 ]
 
 
