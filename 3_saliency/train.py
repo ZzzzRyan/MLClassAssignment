@@ -24,18 +24,18 @@ class Config:
     train_root: str = "dataset/3-Saliency-TrainSet.zip"
     test_root: str = "dataset/3-Saliency-TestSet.zip"
     image_size: tuple = (256, 256)
-    batch_size: int = 6
-    epochs: int = 25
-    lr: float = 1e-4
-    weight_decay: float = 1e-4
-    val_split: float = 0.1
+    batch_size: int = 12  # Larger batch for more stable gradients
+    epochs: int = 40  # More epochs for better convergence
+    lr: float = 5e-4  # Higher initial LR for OneCycleLR
+    weight_decay: float = 5e-5  # Reduced weight decay
+    val_split: float = 0.10  # Smaller validation, more training data
     num_workers: int = 4
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     model_path: Path = Path("3_saliency/models/saliency_unet.pth")
     report_dir: Path = Path("3_saliency/reports")
     examples_dir: Path = Path("3_saliency/reports/examples")
     use_amp: bool = torch.cuda.is_available()
-    augment: bool = True
+    augment: bool = True  # Data augmentation for better generalization
 
 
 def mixed_precision_enabled(cfg: Config) -> bool:
@@ -45,27 +45,55 @@ def mixed_precision_enabled(cfg: Config) -> bool:
 def save_curves(history: Dict[str, List[float]], out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
     epochs = list(range(1, len(history["train_loss"]) + 1))
-    plt.figure(figsize=(10, 4))
-    plt.subplot(1, 2, 1)
-    plt.plot(epochs, history["train_loss"], label="train")
-    plt.plot(epochs, history["val_loss"], label="val")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
 
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs, history["cc"], label="val CC")
-    plt.plot(epochs, history["mae"], label="val MAE")
-    plt.xlabel("Epoch")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+    # Loss curves
+    axes[0, 0].plot(epochs, history["train_loss"], label="train", linewidth=2)
+    axes[0, 0].plot(epochs, history["val_loss"], label="val", linewidth=2)
+    axes[0, 0].set_xlabel("Epoch", fontsize=12)
+    axes[0, 0].set_ylabel("Loss", fontsize=12)
+    axes[0, 0].set_title("Training & Validation Loss", fontsize=14)
+    axes[0, 0].legend()
+    axes[0, 0].grid(True, alpha=0.3)
+
+    # CC curve
+    axes[0, 1].plot(
+        epochs, history["cc"], label="val CC", color="green", linewidth=2
+    )
+    axes[0, 1].set_xlabel("Epoch", fontsize=12)
+    axes[0, 1].set_ylabel("CC Score", fontsize=12)
+    axes[0, 1].set_title(
+        "Correlation Coefficient (Higher is Better)", fontsize=14
+    )
+    axes[0, 1].legend()
+    axes[0, 1].grid(True, alpha=0.3)
+
+    # MAE curve
+    axes[1, 0].plot(
+        epochs, history["mae"], label="val MAE", color="orange", linewidth=2
+    )
+    axes[1, 0].set_xlabel("Epoch", fontsize=12)
+    axes[1, 0].set_ylabel("MAE Score", fontsize=12)
+    axes[1, 0].set_title("Mean Absolute Error (Lower is Better)", fontsize=14)
+    axes[1, 0].legend()
+    axes[1, 0].grid(True, alpha=0.3)
+
+    # KLD curve
+    axes[1, 1].plot(
+        epochs, history["kld"], label="val KLD", color="red", linewidth=2
+    )
+    axes[1, 1].set_xlabel("Epoch", fontsize=12)
+    axes[1, 1].set_ylabel("KLD Score", fontsize=12)
+    axes[1, 1].set_title("KL Divergence (Lower is Better)", fontsize=14)
+    axes[1, 1].legend()
+    axes[1, 1].grid(True, alpha=0.3)
 
     plt.tight_layout()
     out_path = out_dir / "training_curves.png"
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path, dpi=200)
     plt.close()
-    print(f"Saved curves to {out_path}")
+    print(f"Saved enhanced curves to {out_path}")
 
 
 def save_predictions(
@@ -75,6 +103,7 @@ def save_predictions(
     device: torch.device,
     max_batches: int = 2,
 ):
+    """Save prediction visualizations with overlay effects."""
     out_dir.mkdir(parents=True, exist_ok=True)
     model.eval()
     with torch.no_grad():
@@ -92,30 +121,121 @@ def save_predictions(
                 # denormalize image for visualization
                 mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
                 std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
-                img_vis = (img * std + mean).clamp(0, 1)
+                img_vis = (
+                    (img * std + mean).clamp(0, 1).permute(1, 2, 0).numpy()
+                )
 
-                fig, axes = plt.subplots(1, 3, figsize=(9, 3))
-                axes[0].imshow(img_vis.permute(1, 2, 0))
-                axes[0].set_title("Input")
-                axes[1].imshow(gt.squeeze(), cmap="hot")
-                axes[1].set_title("GT")
-                axes[2].imshow(pr.squeeze(), cmap="hot")
-                axes[2].set_title("Pred")
-                for ax in axes:
-                    ax.axis("off")
+                # Convert saliency maps to numpy
+                gt_map = gt.squeeze().numpy()
+                pr_map = pr.squeeze().numpy()
+
+                # Create overlays with hot colormap
+                hot_cmap = plt.get_cmap("hot")
+                gt_colored = hot_cmap(gt_map)[..., :3]  # Remove alpha channel
+                pr_colored = hot_cmap(pr_map)[..., :3]
+
+                # Blend: 60% original image + 40% saliency heatmap
+                alpha = 0.4
+                gt_overlay = img_vis * (1 - alpha) + gt_colored * alpha
+                pr_overlay = img_vis * (1 - alpha) + pr_colored * alpha
+
+                # Create figure with 5 subplots
+                fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+
+                # Row 1: Original, GT heatmap, GT overlay
+                axes[0, 0].imshow(img_vis)
+                axes[0, 0].set_title(
+                    "Original Image", fontsize=12, fontweight="bold"
+                )
+                axes[0, 0].axis("off")
+
+                axes[0, 1].imshow(gt_map, cmap="hot")
+                axes[0, 1].set_title(
+                    "Ground Truth Saliency", fontsize=12, fontweight="bold"
+                )
+                axes[0, 1].axis("off")
+
+                axes[0, 2].imshow(gt_overlay)
+                axes[0, 2].set_title(
+                    "GT Overlay", fontsize=12, fontweight="bold"
+                )
+                axes[0, 2].axis("off")
+
+                # Row 2: Original (duplicate for symmetry), Pred heatmap, Pred overlay
+                axes[1, 0].imshow(img_vis)
+                axes[1, 0].set_title(
+                    "Original Image", fontsize=12, fontweight="bold"
+                )
+                axes[1, 0].axis("off")
+
+                axes[1, 1].imshow(pr_map, cmap="hot")
+                axes[1, 1].set_title(
+                    "Predicted Saliency", fontsize=12, fontweight="bold"
+                )
+                axes[1, 1].axis("off")
+
+                axes[1, 2].imshow(pr_overlay)
+                axes[1, 2].set_title(
+                    "Prediction Overlay", fontsize=12, fontweight="bold"
+                )
+                axes[1, 2].axis("off")
+
                 plt.tight_layout()
-                out_path = out_dir / f"batch{b_idx}_sample{i}.png"
-                plt.savefig(out_path, dpi=150)
+                out_path = out_dir / f"batch{b_idx}_sample{i}_overlay.png"
+                plt.savefig(out_path, dpi=200, bbox_inches="tight")
                 plt.close()
+                # print(f"Saved overlay visualization: {out_path.name}")
+
+
+def cc_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Correlation Coefficient loss (maximize CC = minimize 1-CC).
+
+    Returns 1-CC so the loss is always positive:
+    - CC = 1.0 (perfect) → loss = 0.0
+    - CC = 0.0 (no correlation) → loss = 1.0
+    - CC = -1.0 (inverse) → loss = 2.0
+    """
+    p = pred.view(pred.size(0), -1)
+    t = target.view(target.size(0), -1)
+    p_mean = p.mean(dim=1, keepdim=True)
+    t_mean = t.mean(dim=1, keepdim=True)
+    p_centered = p - p_mean
+    t_centered = t - t_mean
+    numerator = (p_centered * t_centered).sum(dim=1)
+    denominator = torch.sqrt(
+        (p_centered.pow(2).sum(dim=1) + 1e-8)
+        * (t_centered.pow(2).sum(dim=1) + 1e-8)
+    )
+    cc = numerator / denominator
+    return 1.0 - cc.mean()  # minimize (1-CC) = maximize CC, always positive
+
+
+def kld_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """KL Divergence loss."""
+    p = pred.view(pred.size(0), -1)
+    t = target.view(target.size(0), -1)
+    p = p / (p.sum(dim=1, keepdim=True) + 1e-8)
+    t = t / (t.sum(dim=1, keepdim=True) + 1e-8)
+    kld = (t * torch.log((t + 1e-8) / (p + 1e-8))).sum(dim=1)
+    return kld.mean()
 
 
 def compute_loss(
     pred_logits: torch.Tensor, target: torch.Tensor
 ) -> torch.Tensor:
+    """Combined loss: BCE + CC + KLD with balanced weights.
+
+    Simplified and balanced design for better convergence:
+    - BCE: pixel-level accuracy
+    - CC: spatial correlation (primary metric)
+    - KLD: distribution similarity
+    """
     bce = F.binary_cross_entropy_with_logits(pred_logits, target)
     pred = torch.sigmoid(pred_logits)
-    l1 = F.l1_loss(pred, target)
-    return 0.7 * bce + 0.3 * l1
+    cc = cc_loss(pred, target)
+    kld = kld_loss(pred, target)
+    # Balanced combination: equal emphasis on BCE and CC
+    return 2.0 * bce + 1.5 * cc + 0.5 * kld
 
 
 def evaluate(model: UNetSaliency, loader: DataLoader, device: torch.device):
@@ -170,14 +290,30 @@ def train():
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
     )
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=3
+    # Use OneCycleLR for better convergence with warmup
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=cfg.lr,
+        epochs=cfg.epochs,
+        steps_per_epoch=len(train_loader),
+        pct_start=0.3,  # 30% warmup
+        div_factor=25,  # initial_lr = max_lr/25
+        final_div_factor=1e4,  # final_lr = max_lr/1e4
     )
     scaler = GradScaler() if mixed_precision_enabled(cfg) else None
 
-    history = {"train_loss": [], "val_loss": [], "cc": [], "mae": []}
+    history = {
+        "train_loss": [],
+        "val_loss": [],
+        "cc": [],
+        "mae": [],
+        "kld": [],
+    }
     best_cc = -1e9
     best_state = None
+    patience = 12  # Increased patience for better exploration
+    min_delta = 0.0005  # Minimum improvement threshold
+    patience_counter = 0
 
     for epoch in range(1, cfg.epochs + 1):
         model.train()
@@ -204,34 +340,52 @@ def train():
             running_loss += float(loss.item()) * xb.size(0)
             count += xb.size(0)
 
+            # OneCycleLR steps after each batch
+            scheduler.step()
+
         train_loss = running_loss / max(count, 1)
 
         val_loss, val_metrics = evaluate(model, val_loader, device)
-        scheduler.step(val_loss)
+        # OneCycleLR scheduler.step() called per batch, not per epoch
 
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)
         history["cc"].append(val_metrics["cc"])
         history["mae"].append(val_metrics["mae"])
+        history["kld"].append(val_metrics["kld"])
 
+        current_lr = optimizer.param_groups[0]["lr"]
         print(
-            f"Epoch {epoch:02d}/{cfg.epochs} - train_loss {train_loss:.4f} "
-            f"val_loss {val_loss:.4f} CC {val_metrics['cc']:.4f} MAE {val_metrics['mae']:.4f}"
+            f"Epoch {epoch:02d}/{cfg.epochs} - LR {current_lr:.2e} - "
+            f"train_loss {train_loss:.4f} val_loss {val_loss:.4f} "
+            f"CC {val_metrics['cc']:.4f} MAE {val_metrics['mae']:.4f} KLD {val_metrics['kld']:.4f}"
         )
 
-        # Save best
-        if val_metrics["cc"] > best_cc:
+        # Save best and early stopping with minimum improvement threshold
+        if val_metrics["cc"] > best_cc + min_delta:
             best_cc = val_metrics["cc"]
             best_state = model.state_dict()
+            patience_counter = 0
             cfg.model_path.parent.mkdir(parents=True, exist_ok=True)
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
                     "config": cfg.__dict__,
+                    "best_cc": best_cc,
+                    "epoch": epoch,
                 },
                 cfg.model_path,
             )
-            print(f"  -> Saved new best model to {cfg.model_path}")
+            print(
+                f"  -> Saved new best model (CC: {best_cc:.4f}) to {cfg.model_path}"
+            )
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(
+                    f"Early stopping triggered after {patience} epochs without improvement."
+                )
+                break
 
     # Reports
     if best_state is not None:
