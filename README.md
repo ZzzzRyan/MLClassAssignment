@@ -15,7 +15,22 @@
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-### 1.2 运行代码
+### 1.2 准备数据集
+
+第 1、2、3 题的数据集通过北航网盘下载，网盘地址为：
+
+https://bhpan.buaa.edu.cn/link/AA84F755C78F1F4062BB81EBD5B41D5F7A
+
+**重要：下载后把所有压缩包放到 `./dataset/` 目录下**
+
+第 4 题目的数据集通过以下代码获取：
+
+```python
+from torchvision.datasets import CIFAR10
+dataset = CIFAR10(root='./CIFARdata', download=True, transform=transforms.ToTensor())
+```
+
+### 1.3 运行代码
 
 在**项目根目录**运行以下命令：
 
@@ -25,7 +40,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
     uv run 1_digit/train_pytorch.py
     ```
 
-2. 实验二：待续
+2. 实验二：医学
 
 运行代码后会输出模型参数文件（例如`pytorch_model.pth`）到对应实验文件夹的 `models` 目录下，并输出性能指标等数据到控制台。
 
