@@ -11,7 +11,7 @@ from typing import Dict, List
 
 import dataset_utils
 import matplotlib.pyplot as plt
-import metrics
+import metric
 import torch
 import torch.nn.functional as F
 from model import UNetSaliency, count_parameters
@@ -238,6 +238,92 @@ def compute_loss(
     return 2.0 * bce + 1.5 * cc + 0.5 * kld
 
 
+def compute_mae(pred: torch.Tensor, target: torch.Tensor) -> float:
+    """Compute Mean Absolute Error.
+
+    Args:
+        pred: Predicted saliency map
+        target: Ground truth saliency map
+
+    Returns:
+        MAE value (lower is better)
+    """
+    return torch.mean(torch.abs(pred - target)).item()
+
+
+def compute_nss(pred: torch.Tensor, target: torch.Tensor) -> float:
+    """Compute Normalized Scanpath Saliency.
+
+    NSS measures how well the predicted saliency map aligns with fixation points.
+    Higher NSS indicates better prediction of human attention.
+
+    Args:
+        pred: Predicted saliency map
+        target: Ground truth fixation map
+
+    Returns:
+        NSS value (higher is better)
+    """
+    # Normalize predicted saliency map
+    pred_flat = pred.view(pred.size(0), -1)
+    pred_mean = pred_flat.mean(dim=1, keepdim=True)
+    pred_std = pred_flat.std(dim=1, keepdim=True) + 1e-8
+    pred_norm = (pred_flat - pred_mean) / pred_std
+
+    # Treat target as fixation points (binary)
+    target_flat = target.view(target.size(0), -1)
+
+    # Compute NSS: mean of normalized saliency at fixation locations
+    nss = (pred_norm * target_flat).sum(dim=1) / (
+        target_flat.sum(dim=1) + 1e-8
+    )
+    return nss.mean().item()
+
+
+def compute_all_metrics(
+    pred: torch.Tensor, target: torch.Tensor
+) -> Dict[str, float]:
+    """Compute all evaluation metrics using metric.py functions and custom implementations.
+
+    Args:
+        pred: Predicted saliency map (batch_size, 1, H, W)
+        target: Ground truth saliency map (batch_size, 1, H, W)
+
+    Returns:
+        Dictionary containing all metric values
+    """
+    batch_size = pred.size(0)
+
+    # Initialize accumulators
+    cc_total = 0.0
+    kld_total = 0.0
+    mae_total = 0.0
+    nss_total = 0.0
+
+    # Convert to numpy and compute metrics per image
+    pred_np = pred.detach().cpu().numpy()
+    target_np = target.detach().cpu().numpy()
+
+    for i in range(batch_size):
+        pred_map = pred_np[i, 0]  # Remove channel dimension
+        target_map = target_np[i, 0]
+
+        # Use metric.py functions
+        cc_total += metric.calc_cc_score(target_map, pred_map)
+        kld_total += metric.KLD(target_map, pred_map)
+
+    # Compute MAE and NSS using PyTorch (faster)
+    mae_total = compute_mae(pred, target) * batch_size
+    nss_total = compute_nss(pred, target) * batch_size
+
+    return {
+        "cc": cc_total / batch_size,
+        "kld": kld_total / batch_size,
+        "mae": mae_total / batch_size,
+        "nss": nss_total / batch_size,
+    }
+
+
 def evaluate(model: UNetSaliency, loader: DataLoader, device: torch.device):
     model.eval()
     total_loss = 0.0
@@ -258,7 +344,7 @@ def evaluate(model: UNetSaliency, loader: DataLoader, device: torch.device):
             total_loss += float(loss.item()) * xb.size(0)
             total += xb.size(0)
             pred = torch.sigmoid(logits)
-            batch_metrics = metrics.compute_all_metrics(pred, yb)
+            batch_metrics = compute_all_metrics(pred, yb)
             for k in metric_accum:
                 metric_accum[k] += batch_metrics[k] * xb.size(0)
 
