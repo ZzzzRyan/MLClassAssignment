@@ -15,3 +15,5 @@ dataset/
 # Output files
 models/
 reports/
+outputs/
+checkpoints/
